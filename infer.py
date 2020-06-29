@@ -1,11 +1,14 @@
 # Copyright (c) 2017 NVIDIA Corporation
-import torch
 import argparse
 import copy
+from pathlib import Path
+from timeit import default_timer as timer
+
+import numpy as np
+import torch
 from reco_encoder.data import input_layer
 from reco_encoder.model import model
 from torch.autograd import Variable
-from pathlib import Path
 
 parser = argparse.ArgumentParser(description='RecoEncoder')
 
@@ -27,15 +30,39 @@ parser.add_argument('--save_path', type=str, default="autorec.pt", metavar='N',
                     help='where to save model')
 parser.add_argument('--predictions_path', type=str, default="out.txt", metavar='N',
                     help='where to save predictions')
+parser.add_argument('--use_gpu', type=bool, default=torch.cuda.is_available(),
+                    help='use CPU if true')
 
 args = parser.parse_args()
 print(args)
 
-use_gpu = torch.cuda.is_available() # global flag
+#use_gpu = torch.cuda.is_available() # global flag
 if use_gpu:
     print('GPU is available.') 
 else: 
     print('GPU is not available.')
+
+def calculate_stats(time_list):
+    """Calculate mean and standard deviation of a list"""
+    time_array = np.array(time_list)
+
+    median = np.median(time_array)
+    mean = np.mean(time_array)
+    std_dev = np.std(time_array)
+    max_time = np.amax(time_array)
+    min_time = np.amin(time_array)
+    quantile_10 = np.quantile(time_array, 0.1)
+    quantile_90 = np.quantile(time_array, 0.9)
+
+    return dict(
+      median=median, 
+      mean=mean,
+      std_dev=std_dev,
+      min_time=min_time, 
+      max_time=max_time, 
+      quantile_10=quantile_10,
+      quantile_90=quantile_90
+    )
 
 def main():
   params = dict()
@@ -83,19 +110,32 @@ def main():
   inv_itemIdMap = {v: k for k, v in data_layer.itemIdMap.items()}
 
   eval_data_layer.src_data = data_layer.data
+
+  individual_times: List[float] = []
   with open(args.predictions_path, 'w') as outf:
     for i, ((out, src), majorInd) in enumerate(eval_data_layer.iterate_one_epoch_eval(for_inf=True)):
       inputs = Variable(src.cuda().to_dense() if use_gpu else src.to_dense())
       targets_np = out.to_dense().numpy()[0, :]
+      
+      # Timer for benchmarking
+      start_time = timer()
       outputs = rencoder(inputs).cpu().data.numpy()[0, :]
       non_zeros = targets_np.nonzero()[0].tolist()
       major_key = inv_userIdMap [majorInd]
+      end_time = timer()
+
+      # Collect stats
+      total_time = end_time - start_time
+      individual_times.append(total_time*10e3) #milliseconds
+
       for ind in non_zeros:
         outf.write("{}\t{}\t{}\t{}\n".format(major_key, inv_itemIdMap[ind], outputs[ind], targets_np[ind]))
       if i % 10000 == 0:
         print("Done: {}".format(i))
+        print(calculate_stats(individual_times[i-10000:i]))
+
+    print("Benchmark Stats")
+    print(calculate_stats(individual_times))
 
 if __name__ == '__main__':
   main()
-
-
