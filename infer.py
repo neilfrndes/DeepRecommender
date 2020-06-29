@@ -30,17 +30,18 @@ parser.add_argument('--save_path', type=str, default="autorec.pt", metavar='N',
                     help='where to save model')
 parser.add_argument('--predictions_path', type=str, default="out.txt", metavar='N',
                     help='where to save predictions')
-parser.add_argument('--use_gpu', type=bool, default=torch.cuda.is_available(),
-                    help='use CPU if true')
+parser.add_argument('--use_gpu', action='store_true')
 
 args = parser.parse_args()
 print(args)
 
 #use_gpu = torch.cuda.is_available() # global flag
-if use_gpu:
-    print('GPU is available.') 
+use_gpu = args.use_gpu
+if use_gpu and torch.cuda.is_available():
+    print('GPU enabled.') 
 else: 
-    print('GPU is not available.')
+    use_gpu = False
+    print('GPU disabled.')
 
 def calculate_stats(time_list):
     """Calculate mean and standard deviation of a list"""
@@ -130,7 +131,8 @@ def main():
 
       for ind in non_zeros:
         outf.write("{}\t{}\t{}\t{}\n".format(major_key, inv_itemIdMap[ind], outputs[ind], targets_np[ind]))
-      if i % 10000 == 0:
+
+      if i % 10000 == 0 and i > 0:
         print("Done: {}".format(i))
         print(calculate_stats(individual_times[i-10000:i]))
 
