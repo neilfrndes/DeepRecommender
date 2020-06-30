@@ -96,7 +96,8 @@ def main():
   path_to_model = Path(args.save_path)
   if path_to_model.is_file():
     print("Loading model from: {}".format(path_to_model))
-    rencoder.load_state_dict(torch.load(args.save_path))
+    device = torch.device('cuda') if use_gpu else torch.device('cpu')
+    rencoder.load_state_dict(torch.load(args.save_path, map_location=device))
 
   print('######################################################')
   print('######################################################')
